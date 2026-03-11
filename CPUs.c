@@ -259,7 +259,29 @@ void* RRcpu(void* param) {
         // FIFO is non-preemptive: once a process is running (p != NULL) we
         // never replace it mid-burst.  We only enter this block when the CPU
         // has nothing to run.
-        if (p == NULL) {
+
+        if (quantCount == 0)   {
+                p->requeued = true;
+
+                pthread_mutex_lock(&(svars->readyQLock));
+                qInsert(&(svars->readyQ), p);
+                p = qRemove(&(svars->readyQ),0);
+
+               
+
+                if (p == NULL) {
+                // readyQ was empty — CPU stays idle this tick.
+                printf("No process to schedule\n");
+                } else {
+                    printf("Scheduling PID %d\n", p->PID);
+                }
+
+                quantCount = svars->quantum;
+
+                pthread_mutex_unlock(&(svars->readyQLock));
+            }
+
+        else if (p == NULL) {
             // Lock readyQ before inspecting or modifying it — another CPU
             // thread (or main inserting a new arrival) could touch it right now.
             pthread_mutex_lock(&(svars->readyQLock));
@@ -267,7 +289,7 @@ void* RRcpu(void* param) {
             // Index 0 = head of the list = the process that has been waiting
             // the longest (qInsert always appends to the tail, so the head is
             // always the oldest arrival — that is the FIFO selection rule).
-            p = qRemove(&(svars->readyQ), qPriority(&(svars->readyQ)));
+            p = qRemove(&(svars->readyQ), 0);
 
             if (p == NULL) {
                 // readyQ was empty — CPU stays idle this tick.
@@ -300,16 +322,7 @@ void* RRcpu(void* param) {
                 
             }
 
-            else if (quantCount == 0)   {
-                p->requeued = true;
-
-                pthread_mutex_lock(&(svars->readyQLock));
-                qInsert(&(svars->readyQ), p);
-                pthread_mutex_unlock(&(svars->readyQLock));
-
-                p = NULL;
-                quantCount = svars->quantum;
-            }
+            
         }
 
         // ── Sync point 2: signal main that this CPU is done ─────────────
