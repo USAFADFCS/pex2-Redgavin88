@@ -1,7 +1,7 @@
 /** CPUs.c
  * ===========================================================
  * Name: Smith, Gavin
- * Section: M4
+ * Section: M3
  * Project: PEX2 - CPU Scheduling Simulator
  * Purpose: Implements six CPU scheduling algorithms as POSIX threads.
  *          Each thread follows the same pattern every timestep:
