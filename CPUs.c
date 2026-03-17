@@ -1,7 +1,7 @@
 /** CPUs.c
  * ===========================================================
- * Name: <Last Name, First Name>
- * Section: <Section>
+ * Name: Smith, Gavin
+ * Section: M4
  * Project: PEX2 - CPU Scheduling Simulator
  * Purpose: Implements six CPU scheduling algorithms as POSIX threads.
  *          Each thread follows the same pattern every timestep:
@@ -14,7 +14,7 @@
  *          All accesses to readyQ and finishedQ are protected by their
  *          respective mutex locks.
  * ===========================================================
- * Documentation Statement: <describe any help received>
+ * Documentation Statement: None.
  * =========================================================== */
 
 #include <stdio.h>
@@ -132,7 +132,8 @@ void* SJFcpu(void* param) {
             } else {
                 printf("Scheduling PID %d\n", p->PID);
             }
-
+            
+            //Unlock ready queue
             pthread_mutex_unlock(&(svars->readyQLock));
         }
 
@@ -145,6 +146,7 @@ void* SJFcpu(void* param) {
             if (p->burstRemaining == 0) {
                 // Process is done — move it to finishedQ so main can
                 // compute and print wait-time statistics at simulation end.
+                //locking/unlocking the finished queue
                 pthread_mutex_lock(&(svars->finishedQLock));
                 qInsert(&(svars->finishedQ), p);
                 pthread_mutex_unlock(&(svars->finishedQLock));
@@ -183,7 +185,7 @@ void* NPPcpu(void* param) {
         sem_wait(svars->cpuSems[threadNum]);
 
         // ── Selection (only when idle) ───────────────────────────────────
-        // FIFO is non-preemptive: once a process is running (p != NULL) we
+        // NPP is non-preemptive: once a process is running (p != NULL) we
         // never replace it mid-burst.  We only enter this block when the CPU
         // has nothing to run.
         if (p == NULL) {
@@ -191,9 +193,8 @@ void* NPPcpu(void* param) {
             // thread (or main inserting a new arrival) could touch it right now.
             pthread_mutex_lock(&(svars->readyQLock));
 
-            // Index 0 = head of the list = the process that has been waiting
-            // the longest (qInsert always appends to the tail, so the head is
-            // always the oldest arrival — that is the FIFO selection rule).
+            // NPP finds the highest priority in the queue and runs that process, qPriority finds the
+            // highest priority — that is the NPP selection rule.
             p = qRemove(&(svars->readyQ), qPriority(&(svars->readyQ)));
 
             if (p == NULL) {
@@ -203,6 +204,7 @@ void* NPPcpu(void* param) {
                 printf("Scheduling PID %d\n", p->PID);
             }
 
+            //unlock ready queue
             pthread_mutex_unlock(&(svars->readyQLock));
         }
 
@@ -246,6 +248,7 @@ void* RRcpu(void* param) {
     // p == NULL means the CPU is idle and must pick a new process from readyQ.
     Process* p = NULL;
 
+    //Get the quantum number from svars and store it in a temp var
     int quantCount = svars->quantum;
 
     // This thread runs forever — one loop iteration = one simulation timestep.
@@ -256,19 +259,23 @@ void* RRcpu(void* param) {
         sem_wait(svars->cpuSems[threadNum]);
 
         // ── Selection (only when idle) ───────────────────────────────────
-        // FIFO is non-preemptive: once a process is running (p != NULL) we
-        // never replace it mid-burst.  We only enter this block when the CPU
-        // has nothing to run.
+        // RR runs a process until it finishes or it reaches the quantum number. At that point it 
+        // swtiches to the next process on the ready queue.
 
+        //Check to see if quantum number has been reached
         if (quantCount == 0)   {
+
+                //Set requeue to true before pushing back onto ready queue
                 p->requeued = true;
 
+                //lock ready queue and add the current process to the queue.
+                //Then pull the next one from the head.
                 pthread_mutex_lock(&(svars->readyQLock));
                 qInsert(&(svars->readyQ), p);
                 p = qRemove(&(svars->readyQ),0);
 
                
-
+                // handle new process
                 if (p == NULL) {
                 // readyQ was empty — CPU stays idle this tick.
                 printf("No process to schedule\n");
@@ -276,8 +283,10 @@ void* RRcpu(void* param) {
                     printf("Scheduling PID %d\n", p->PID);
                 }
 
+                //reset quantum counter
                 quantCount = svars->quantum;
-
+                
+                //unlock ready queue
                 pthread_mutex_unlock(&(svars->readyQLock));
             }
 
@@ -288,7 +297,7 @@ void* RRcpu(void* param) {
 
             // Index 0 = head of the list = the process that has been waiting
             // the longest (qInsert always appends to the tail, so the head is
-            // always the oldest arrival — that is the FIFO selection rule).
+            // always the oldest arrival — that is the RR selection rule).
             p = qRemove(&(svars->readyQ), 0);
 
             if (p == NULL) {
@@ -298,6 +307,7 @@ void* RRcpu(void* param) {
                 printf("Scheduling PID %d\n", p->PID);
             }
 
+            //unlock ready queue
             pthread_mutex_unlock(&(svars->readyQLock));
         }
 
@@ -306,6 +316,7 @@ void* RRcpu(void* param) {
         // selected above), burn one unit of its remaining CPU burst.
         if (p != NULL) {
             
+            //decrement burst and quantum
             p->burstRemaining--;
             quantCount--;
 
@@ -316,7 +327,7 @@ void* RRcpu(void* param) {
                 qInsert(&(svars->finishedQ), p);
                 pthread_mutex_unlock(&(svars->finishedQLock));
 
-                // CPU is now idle; it will select a new process next tick.
+                // CPU is now idle; it will select a new process next tick. Then reset quantum
                 p = NULL;
                 quantCount = svars->quantum;
                 
