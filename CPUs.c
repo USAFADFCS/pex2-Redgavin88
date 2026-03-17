@@ -365,15 +365,26 @@ void* SRTFcpu(void* param) {
         // until that post arrives, keeping this CPU in lockstep with the clock.
         sem_wait(svars->cpuSems[threadNum]);
 
+        // ── Selection (only when idle) ───────────────────────────────────
+        // SRTF is preemptive: We must check to see if a process with 
+        // shorter bursttime has entered the queue
+
         if ((p != NULL))   {
+            
+            //if there is a process check to see if a process with a shorter time entered and swap them.
+            //start by locking the ready queue
             pthread_mutex_lock(&(svars->readyQLock));
 
+            //If the shortest time remaining is shorter then the current process's burst then swap them
             if (p->burstRemaining > qShortestBR(&(svars->readyQ)))   {
 
+                //set requeue to true
                 p->requeued = true;
                 
+                //insert the current process and pull the shortest
                 qInsert(&(svars->readyQ), p);
                 p = qRemove(&(svars->readyQ),qShortest(&(svars->readyQ)));
+
                 if (p == NULL) {
                     // readyQ was empty — CPU stays idle this tick.
                     printf("No process to schedule\n");
@@ -383,22 +394,18 @@ void* SRTFcpu(void* param) {
                 }
             }
             
+            //unlock the ready queue
             pthread_mutex_unlock(&(svars->readyQLock));
             
         }
 
-        // ── Selection (only when idle) ───────────────────────────────────
-        // FIFO is non-preemptive: once a process is running (p != NULL) we
-        // never replace it mid-burst.  We only enter this block when the CPU
-        // has nothing to run.
+        //if there is no process check to see if there is one on the ready queue
         if (p == NULL) {
             // Lock readyQ before inspecting or modifying it — another CPU
             // thread (or main inserting a new arrival) could touch it right now.
             pthread_mutex_lock(&(svars->readyQLock));
 
-            // Index 0 = head of the list = the process that has been waiting
-            // the longest (qInsert always appends to the tail, so the head is
-            // always the oldest arrival — that is the FIFO selection rule).
+            //insert the shortest burst reamining index in the queue
             p = qRemove(&(svars->readyQ), qShortest(&(svars->readyQ)));
 
             if (p == NULL) {
@@ -408,6 +415,7 @@ void* SRTFcpu(void* param) {
                 printf("Scheduling PID %d\n", p->PID);
             }
 
+            //unlock the ready queue
             pthread_mutex_unlock(&(svars->readyQLock));
         }
 
@@ -456,13 +464,21 @@ void* PPcpu(void* param) {
         // until that post arrives, keeping this CPU in lockstep with the clock.
         sem_wait(svars->cpuSems[threadNum]);
 
+        // ── Selection (only when idle) ───────────────────────────────────
+        // PP is preemptive: We must check to see if a process with 
+        // higher priority has entered the queue
+
         if ((p != NULL))   {
             pthread_mutex_lock(&(svars->readyQLock));
 
+            //if there is a process check to see if a process with a higher priority entered and swap them.
+            //start by locking the ready queue
             if (p->priority > qGetPriority(&(svars->readyQ)))   {
 
+                //set requeue to true
                 p->requeued = true;
                 
+                //insert the current process and pull the highest priority process
                 qInsert(&(svars->readyQ), p);
                 p = qRemove(&(svars->readyQ),qPriority(&(svars->readyQ)));
                 if (p == NULL) {
@@ -474,22 +490,18 @@ void* PPcpu(void* param) {
                 }
             }
             
+            //Unlock readyq
             pthread_mutex_unlock(&(svars->readyQLock));
             
         }
 
-        // ── Selection (only when idle) ───────────────────────────────────
-        // FIFO is non-preemptive: once a process is running (p != NULL) we
-        // never replace it mid-burst.  We only enter this block when the CPU
-        // has nothing to run.
+        // if there is no process check to see if one is on the queue        
         if (p == NULL) {
             // Lock readyQ before inspecting or modifying it — another CPU
             // thread (or main inserting a new arrival) could touch it right now.
             pthread_mutex_lock(&(svars->readyQLock));
 
-            // Index 0 = head of the list = the process that has been waiting
-            // the longest (qInsert always appends to the tail, so the head is
-            // always the oldest arrival — that is the FIFO selection rule).
+            //insert the highest priority index
             p = qRemove(&(svars->readyQ), qPriority(&(svars->readyQ)));
 
             if (p == NULL) {
@@ -499,6 +511,7 @@ void* PPcpu(void* param) {
                 printf("Scheduling PID %d\n", p->PID);
             }
 
+            //unlock the ready q
             pthread_mutex_unlock(&(svars->readyQLock));
         }
 
